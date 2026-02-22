@@ -1,60 +1,107 @@
 /**
- * SKELETAL DRAGON ANIMATION - SCRIPT.JS
+ * SKELETAL DRAGON ANIMATION - OPTIMIZED ENGINE
  * 
- * Yeh script ek interactive procedural animation banati hai.
- * Isme ek Skeleton Dragon hai jo mouse ya touch controller ko follow karta hai.
- * Features: Food hunting, background themes, mobile joysticks, aur spectral effects.
+ * Yeh script performance-optimized procedural animation engine hai.
+ * Optimizations: Object Pooling, Squared Distance Math, Batch Rendering.
  */
 
-const canvas = document.getElementById('snakeCanvas');
-const ctx = canvas.getContext('2d');
-const themeBtn = document.getElementById('themeBtn');
-
-let width, height;
-// Mouse position ko track karne ke liye object (Initially screen center mein)
-let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-let dragon;
-let food;
-let time = 0; // Animation time counter
-let distanceWalked = 0; // Legs movement calculate karne ke liye
-let particles = []; // Burst effects ke liye particles
-let bgParticles = []; // Background stars ke liye
-
-// Mobile device detection aur controller state
-let isMobile = false;
-let joystick = { active: false, startX: 0, startY: 0, currX: 0, currY: 0, radius: 50 };
-
-// Background Themes cycling ke liye array
-const themes = [
-    '#161616', // Obsidian (Black)
-    '#0a0b16', // Deep Space (Blue)
-    '#160a16', // Nebula Purple
-    '#0a1616', // Abyssal Cyan
-    '#1c1c1e'  // Midnight Grey
-];
-let currentThemeIndex = 0;
+// State Object - Sare global variables ko ek jagah organize kiya
+const state = {
+    canvas: document.getElementById('snakeCanvas'),
+    ctx: document.getElementById('snakeCanvas').getContext('2d'),
+    themeBtn: document.getElementById('themeBtn'),
+    width: 0,
+    height: 0,
+    mouse: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    dragon: null,
+    food: null,
+    time: 0,
+    distanceWalked: 0,
+    isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+    particles: [],
+    bgParticles: [],
+    joystick: { active: false, startX: 0, startY: 0, currX: 0, currY: 0, radius: 50 },
+    themes: ['#161616', '#0a0b16', '#160a16', '#0a1616', '#1c1c1e'],
+    currentThemeIndex: 0
+};
 
 /**
- * FOOD CLASS - Dragon ka khana (Blinking dots)
+ * PARTICLE POOL - Memory Optimization (GC spikes rokne ke liye)
+ */
+const ParticlePool = {
+    pool: [],
+    get(x, y, angle, speed, life, scale, color) {
+        let p;
+        if (this.pool.length > 0) {
+            p = this.pool.pop();
+            p.init(x, y, angle, speed, life, scale, color);
+        } else {
+            p = new Particle(x, y, angle, speed, life, scale, color);
+        }
+        return p;
+    },
+    recycle(p) {
+        this.pool.push(p);
+    }
+};
+
+class Particle {
+    constructor(x, y, angle, speed, life, scale, color) {
+        this.init(x, y, angle, speed, life, scale, color);
+    }
+
+    init(x, y, angle, speed, life, scale, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle + (Math.random() - 0.5) * 0.5) * speed;
+        this.vy = Math.sin(angle + (Math.random() - 0.5) * 0.5) * speed;
+        this.life = life;
+        this.initialLife = life;
+        this.size = (Math.random() * 6 + 2) * scale;
+        this.color = color || (Math.random() > 0.5 ? '#4facfe' : '#00f2fe');
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
+        this.size *= 0.96;
+    }
+
+    draw(ctx) {
+        const opacity = this.life / this.initialLife;
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = opacity;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+/**
+ * FOOD CLASS - Optimized collision detection
  */
 class Food {
     constructor() {
         this.spawn();
     }
 
-    // Nayi jagah par food spawn karna (Dragon ke body se door)
     spawn() {
         let valid = false;
         let attempts = 0;
-        while (!valid && attempts < 50) {
-            this.x = Math.random() * (width - 100) + 50;
-            this.y = Math.random() * (height - 100) + 50;
+        const margin = 100;
+        const minDistSq = 10000; // 100^2
 
+        while (!valid && attempts < 50) {
+            this.x = Math.random() * (state.width - margin * 2) + margin;
+            this.y = Math.random() * (state.height - margin * 2) + margin;
             valid = true;
-            if (dragon) {
-                // Check ki food dragon ke segments ke upar na aaye
-                for (let seg of dragon.segments) {
-                    if (Math.hypot(this.x - seg.x, this.y - seg.y) < 100) {
+            if (state.dragon) {
+                for (let i = 0; i < state.dragon.segments.length; i += 2) {
+                    const seg = state.dragon.segments[i];
+                    const dx = this.x - seg.x;
+                    const dy = this.y - seg.y;
+                    if (dx * dx + dy * dy < minDistSq) {
                         valid = false;
                         break;
                     }
@@ -64,441 +111,263 @@ class Food {
         }
         this.size = 8;
         this.baseSize = 8;
-        this.glow = 15;
     }
 
-    // Food ko draw karna (Blinking animation ke saath)
-    draw() {
-        const blink = (Math.sin(time * 12) + 1) / 2;
+    draw(ctx) {
+        const blink = (Math.sin(state.time * 12) + 1) * 0.5;
         this.size = this.baseSize + blink * 4;
 
         ctx.save();
-        ctx.shadowBlur = this.glow + blink * 10;
+        ctx.shadowBlur = 15 + blink * 10;
         ctx.shadowColor = '#00f2fe';
         ctx.fillStyle = '#4facfe';
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fill();
-
-        ctx.fillStyle = 'white'; // Inner core chamak ke liye
+        ctx.fillStyle = 'white';
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size * 0.4, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
 
-    // Update check collision (Kha liya ya nahi)
     update() {
-        const head = dragon.segments[0];
-        const dist = Math.hypot(this.x - head.x, this.y - head.y);
-        if (dist < 40) {
+        const head = state.dragon.segments[0];
+        const dx = head.x - this.x;
+        const dy = head.y - this.y;
+        if (dx * dx + dy * dy < 1600) { // 40^2
             this.eat();
         }
     }
 
-    // Khaane par particle effect aur re-spawn
     eat() {
         for (let i = 0; i < 20; i++) {
-            particles.push(new Particle(this.x, this.y, Math.random() * Math.PI * 2, 2 + Math.random() * 4, 30 + Math.random() * 20, dragon.scale * 1.5));
+            state.particles.push(ParticlePool.get(this.x, this.y, Math.random() * Math.PI * 2, 2 + Math.random() * 4, 30 + Math.random() * 20, state.dragon.scale * 1.5));
         }
         this.spawn();
     }
 }
 
 /**
- * BACKGROUND PARTICLE CLASS - Drifting stars efekt
- */
-class BackgroundParticle {
-    constructor() {
-        this.reset();
-    }
-
-    reset() {
-        this.x = Math.random() * window.innerWidth;
-        this.y = Math.random() * window.innerHeight;
-        this.size = Math.random() * 1.5 + 0.5;
-        this.opacity = Math.random() * 0.5 + 0.1;
-        this.speedMult = Math.random() * 0.5 + 0.2;
-    }
-
-    // Dragon ki speed ke hisaab se parallax movement
-    update(vx, vy) {
-        this.x -= vx * 0.2 * this.speedMult;
-        this.y -= vy * 0.2 * this.speedMult;
-
-        // Screen boundary wrapping
-        if (this.x < 0) this.x = width;
-        if (this.x > width) this.x = 0;
-        if (this.y < 0) this.y = height;
-        if (this.y > height) this.y = 0;
-    }
-
-    draw() {
-        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-    }
-}
-
-/**
- * PARTICLE CLASS - Small glowing bursts effects
- */
-class Particle {
-    constructor(x, y, angle, speed, life, scale = 1) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle + (Math.random() - 0.5) * 0.5) * speed;
-        this.vy = Math.sin(angle + (Math.random() - 0.5) * 0.5) * speed;
-        this.life = life; // Kitni der particle screen par rahega
-        this.initialLife = life;
-        this.size = (Math.random() * 6 + 2) * scale;
-        this.color = Math.random() > 0.5 ? '#4facfe' : '#00f2fe';
-    }
-
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life--;
-        this.size *= 0.96; // Dheer-dheere chota hona
-    }
-
-    draw() {
-        const opacity = this.life / this.initialLife;
-        ctx.fillStyle = this.color;
-        ctx.globalAlpha = opacity;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
-}
-
-/**
- * SKELETON DRAGON CLASS - Core creature logic
+ * DRAGON CLASS - Performance Refactoring
  */
 class SkeletonDragon {
     constructor() {
-        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        this.scale = this.isMobile ? 0.6 : 1.0; // Mobile par size chota karna
-
-        this.length = Math.floor((this.isMobile ? 40 : 64) * 1); // Segments count
+        this.scale = state.isMobile ? 0.6 : 1.0;
+        this.length = state.isMobile ? 40 : 64;
         this.segments = [];
-        this.segmentDist = 18 * this.scale; // Dou segments ke beech ki doori
+        this.segmentDist = 18 * this.scale;
         this.ribWidth = 30 * this.scale;
-        this.legCount = this.isMobile ? 8 : 12;
+        this.legCount = state.isMobile ? 8 : 12;
 
         this.isBreathingFire = false;
         this.fireTimer = 0;
         this.isAttacking = false;
         this.attackTimer = 0;
 
-        // Velocity (Raftaar) variables
         this.vx = 0;
         this.vy = 0;
-        this.maxSpeed = this.isMobile ? 6 : 8;
-        this.friction = 0.95; // Physics smoothing
-        this.acceleration = 0.05;
-        this.bufferDist = 60 * this.scale; // Cursor se banaye rakhne wali doori
+        this.maxSpeed = state.isMobile ? 5 : 7;
+        this.friction = 0.92;
+        this.acceleration = 0.08;
+        this.bufferDist = 50 * this.scale;
 
-        // Initial setup: segments ko line mein khada karna (Stretched posture)
         for (let i = 0; i < this.length; i++) {
             this.segments.push({
-                x: width / 2 - i * this.segmentDist,
-                y: height / 2,
+                x: state.width / 2 - i * this.segmentDist,
+                y: state.height / 2,
                 angle: 0
             });
         }
     }
 
-    // Logic updates (Physics and movement)
     update() {
         const head = this.segments[0];
         const oldX = head.x;
         const oldY = head.y;
 
-        let targetX = mouse.x;
-        let targetY = mouse.y;
+        let targetX = state.mouse.x;
+        let targetY = state.mouse.y;
 
-        // Mobile joystick controller logic
-        if (this.isMobile) {
-            if (joystick.active) {
-                const jdx = joystick.currX - joystick.startX;
-                const jdy = joystick.currY - joystick.startY;
+        if (state.isMobile) {
+            if (state.joystick.active) {
+                const jdx = state.joystick.currX - state.joystick.startX;
+                const jdy = state.joystick.currY - state.joystick.startY;
                 targetX = head.x + jdx * 2;
                 targetY = head.y + jdy * 2;
             } else {
-                targetX = head.x; // Ruk jana agar joystick nahi touch hai
+                targetX = head.x;
                 targetY = head.y;
             }
         }
 
         const dx = targetX - head.x;
         const dy = targetY - head.y;
-        const distToTarget = Math.hypot(dx, dy);
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
 
-        // Physics: Target ko follow karna ya 'Shy' efekt (Flinch)
-        if (!this.isMobile && distToTarget < (50 * this.scale) && distToTarget > 0) {
-            // Agar cursor bohot paas hai, toh darta (flinch) hai
-            const force = (50 * this.scale - distToTarget) * 0.2;
-            this.vx -= (dx / distToTarget) * force;
-            this.vy -= (dy / distToTarget) * force;
-        } else if (distToTarget > (this.isMobile ? (joystick.active ? 10 : 0) : this.bufferDist)) {
-            // Target follow karna
-            const actualTargetX = targetX - (dx / (distToTarget || 1)) * (this.isMobile ? 0 : this.bufferDist);
-            const actualTargetY = targetY - (dy / (distToTarget || 1)) * (this.isMobile ? 0 : this.bufferDist);
-
+        if (!state.isMobile && distSq < (2500 * this.scale * this.scale) && dist > 0) { // 50^2
+            const pushForce = (50 * this.scale - dist) * 0.05;
+            this.vx -= (dx / (dist || 1)) * pushForce;
+            this.vy -= (dy / (dist || 1)) * pushForce;
+        } else if (dist > (state.isMobile ? (state.joystick.active ? 10 : 0) : this.bufferDist)) {
+            const actualTargetX = targetX - (dx / (dist || 1)) * (state.isMobile ? 0 : this.bufferDist);
+            const actualTargetY = targetY - (dy / (dist || 1)) * (state.isMobile ? 0 : this.bufferDist);
             const tdx = actualTargetX - head.x;
             const tdy = actualTargetY - head.y;
-            const tdist = Math.hypot(tdx, tdy);
-
-            this.vx += (tdx / (tdist || 1)) * this.acceleration * tdist * 0.1;
-            this.vy += (tdy / (tdist || 1)) * this.acceleration * tdist * 0.1;
+            const tdist = Math.sqrt(tdx * tdx + tdy * tdy);
+            const accel = Math.min(this.acceleration, tdist * 0.005);
+            this.vx += (tdx / (tdist || 1)) * accel * 10;
+            this.vy += (tdy / (tdist || 1)) * accel * 10;
         }
 
-        // Speed limiting
-        const speed = Math.hypot(this.vx, this.vy);
-        if (speed > this.maxSpeed) {
+        const speedSq = this.vx * this.vx + this.vy * this.vy;
+        if (speedSq > this.maxSpeed * this.maxSpeed) {
+            const speed = Math.sqrt(speedSq);
             this.vx = (this.vx / speed) * this.maxSpeed;
             this.vy = (this.vy / speed) * this.maxSpeed;
         }
 
-        this.vx *= this.friction; // Smoothing applied
+        this.vx *= this.friction;
         this.vy *= this.friction;
-
         head.x += this.vx;
         head.y += this.vy;
 
-        // Body segments movement: Forward kinematic chain
-        const headDist = Math.hypot(head.x - oldX, head.y - oldY);
-        distanceWalked += headDist;
+        state.distanceWalked += Math.sqrt((head.x - oldX) ** 2 + (head.y - oldY) ** 2);
 
         for (let i = 1; i < this.length; i++) {
             const prev = this.segments[i - 1];
             const curr = this.segments[i];
-
             let targetDist = this.segmentDist;
-            // Tail attack animation adjustments
             if (this.isAttacking && i > this.length - 10) {
                 targetDist = this.segmentDist * (1 + Math.sin(this.attackTimer * 0.5) * 0.5);
             }
+            const sdx = curr.x - prev.x;
+            const sdy = curr.y - prev.y;
+            const sdist = Math.sqrt(sdx * sdx + sdy * sdy);
 
-            const segDx = curr.x - prev.x;
-            const segDy = curr.y - prev.y;
-            const segDist = Math.hypot(segDx, segDy);
-            const angle = Math.atan2(segDy, segDx);
-            curr.angle = angle;
+            const angle = Math.atan2(sdy, sdx);
+            const angleDiff = ((angle - curr.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+            curr.angle += angleDiff * 0.2;
 
-            // Segments ko fixed distance par rakhna (Rigid chain)
-            curr.x = prev.x + (segDx / (segDist || 1)) * targetDist;
-            curr.y = prev.y + (segDy / (segDist || 1)) * targetDist;
+            curr.x = prev.x + (sdx / (sdist || 1)) * targetDist;
+            curr.y = prev.y + (sdy / (sdist || 1)) * targetDist;
         }
 
-        // Fire breath particle generation
         if (this.isBreathingFire) {
             this.fireTimer--;
             if (this.fireTimer <= 0) this.isBreathingFire = false;
-            const headAngle = Math.atan2(head.y - this.segments[1].y, head.x - this.segments[1].x);
-            for (let i = 0; i < (this.isMobile ? 3 : 5); i++) {
-                particles.push(new Particle(head.x + Math.cos(headAngle) * (20 * this.scale), head.y + Math.sin(headAngle) * (20 * this.scale), headAngle, 5 + Math.random() * 5, 20 + Math.random() * 10, this.scale));
+            const angle = Math.atan2(head.y - this.segments[1].y, head.x - this.segments[1].x);
+            for (let i = 0; i < (state.isMobile ? 2 : 4); i++) {
+                state.particles.push(ParticlePool.get(head.x + Math.cos(angle) * 20, head.y + Math.sin(angle) * 20, angle, 5 + Math.random() * 5, 20 + Math.random() * 10, this.scale));
             }
         }
-
         if (this.isAttacking) {
             this.attackTimer--;
             if (this.attackTimer <= 0) this.isAttacking = false;
         }
     }
 
-    // Graphical rendering
-    draw() {
-        const speed = Math.hypot(this.vx, this.vy);
-        // Spectral Glitch logic: Agar speed bohot hai, toh shadows draw karna
-        if (speed > 5) {
+    draw(ctx) {
+        const speedSq = this.vx * this.vx + this.vy * this.vy;
+        if (speedSq > 25) { // 5^2
             ctx.save();
-            ctx.translate(Math.random() * 4 - 2, Math.random() * 4 - 2);
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
-            this.renderSkeleton();
+            ctx.translate(Math.random() * 2 - 1, Math.random() * 2 - 1);
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.2)';
+            this.renderSkeleton(ctx, false);
             ctx.restore();
         }
-
         ctx.strokeStyle = 'white';
-        this.renderSkeleton();
-
-        // Joystick visualization for mobile
-        if (this.isMobile && joystick.active) this.drawJoystick();
+        this.renderSkeleton(ctx, true);
+        if (state.isMobile && state.joystick.active) this.drawJoystick(ctx);
     }
 
-    // Puray skeleton ki rendering
-    renderSkeleton() {
+    renderSkeleton(ctx, glow) {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        if (glow) {
+            ctx.shadowBlur = (10 + (Math.sin(state.time * 3) + 1) * 5) * this.scale;
+            ctx.shadowColor = '#4facfe';
+        }
 
-        const pulse = (Math.sin(time * 3) + 1) / 2;
-        ctx.shadowBlur = (10 + pulse * 10) * this.scale;
-        ctx.shadowColor = '#4facfe';
-
-        // Vertebral column (Main spine)
+        // 1. Spine
         ctx.beginPath();
         ctx.lineWidth = 3 * this.scale;
         ctx.moveTo(this.segments[0].x, this.segments[0].y);
-        for (let i = 1; i < this.length; i++) {
-            ctx.lineTo(this.segments[i].x, this.segments[i].y);
-        }
+        for (let i = 1; i < this.length; i++) ctx.lineTo(this.segments[i].x, this.segments[i].y);
         ctx.stroke();
 
-        // Spinal Spikes drawing
-        for (let i = 3; i < this.length - 2; i += 2) {
-            this.drawSpineSpike(this.segments[i]);
-        }
-
-        // Ribs (Cage) and Skull
+        // 2. Ribs & Details
+        ctx.lineWidth = 1.2 * this.scale;
         for (let i = 2; i < this.length - 10; i++) {
             const seg = this.segments[i];
-            const size = Math.sin((i / this.length) * Math.PI) * this.ribWidth;
-            const nX = Math.cos(seg.angle + Math.PI / 2);
-            const nY = Math.sin(seg.angle + Math.PI / 2);
-
+            const size = Math.sin((i / (this.length - 10)) * Math.PI) * this.ribWidth;
+            const cos = Math.cos(seg.angle + Math.PI / 2);
+            const sin = Math.sin(seg.angle + Math.PI / 2);
             ctx.beginPath();
-            ctx.lineWidth = 1.2 * this.scale;
-            ctx.moveTo(seg.x + nX * size, seg.y + nY * size);
-            ctx.quadraticCurveTo(seg.x + Math.cos(seg.angle) * (10 * this.scale), seg.y + Math.sin(seg.angle) * (10 * this.scale), seg.x - nX * size, seg.y - nY * size);
+            ctx.moveTo(seg.x + cos * size, seg.y + sin * size);
+            ctx.quadraticCurveTo(seg.x + Math.cos(seg.angle) * 5, seg.y + Math.sin(seg.angle) * 5, seg.x - cos * size, seg.y - sin * size);
             ctx.stroke();
-
-            if (i === 2) this.drawDetailedSkull(seg);
+            if (i === 2) this.drawSkull(ctx, seg);
         }
 
-        // Legs distribution along the body
-        const legSpacing = Math.floor((this.length - 15) / (this.legCount / 2));
+        // 3. Legs
+        const spacing = Math.floor((this.length - 15) / (this.legCount / 2));
         for (let i = 1; i <= this.legCount / 2; i++) {
-            const index = i * legSpacing + 5;
-            if (index < this.length - 5) {
-                this.drawLegPair(this.segments[index], i);
-            }
+            const seg = this.segments[i * spacing + 5];
+            if (seg) this.drawLegs(ctx, seg, i);
         }
 
-        this.drawTail(this.segments[this.length - 1]);
+        this.drawTail(ctx, this.segments[this.length - 1]);
         ctx.shadowBlur = 0;
     }
 
-    // Skull drawing (Detailedmandibles and glowing eyes)
-    drawDetailedSkull(seg) {
+    drawSkull(ctx, seg) {
         ctx.save();
         ctx.translate(seg.x, seg.y);
-        const headAngle = Math.atan2(seg.y - this.segments[1].y, seg.x - this.segments[1].x);
-        ctx.rotate(headAngle);
-
-        ctx.lineWidth = 2 * this.scale;
-        ctx.beginPath(); // Skull outline
+        ctx.rotate(Math.atan2(seg.y - this.segments[1].y, seg.x - this.segments[1].x));
+        ctx.beginPath();
         ctx.moveTo(25 * this.scale, 0);
         ctx.bezierCurveTo(10 * this.scale, -15 * this.scale, -15 * this.scale, -15 * this.scale, -20 * this.scale, -5 * this.scale);
         ctx.lineTo(-20 * this.scale, 5 * this.scale);
         ctx.bezierCurveTo(-15 * this.scale, 15 * this.scale, 10 * this.scale, 15 * this.scale, 25 * this.scale, 0);
         ctx.stroke();
-
-        // Mandibles jaw effect during fire breathing
-        if (this.isBreathingFire) {
+        [-1, 1].forEach(s => {
             ctx.beginPath();
-            ctx.moveTo(20 * this.scale, -5 * this.scale);
-            ctx.lineTo(30 * this.scale, -12 * this.scale);
-            ctx.moveTo(20 * this.scale, 5 * this.scale);
-            ctx.lineTo(30 * this.scale, 12 * this.scale);
-            ctx.stroke();
-        }
-
-        // Horns/Mandibles sides
-        [-1, 1].forEach(side => {
-            ctx.beginPath(); // Horns
-            ctx.moveTo(-10 * this.scale, 8 * side * this.scale);
-            ctx.quadraticCurveTo(-25 * this.scale, 25 * side * this.scale, -40 * this.scale, 15 * side * this.scale);
-            ctx.stroke();
-
-            ctx.beginPath(); // Mandibles
-            ctx.moveTo(15 * this.scale, 5 * side * this.scale);
-            ctx.lineTo(25 * this.scale, 12 * side * this.scale);
-            ctx.lineTo(15 * this.scale, 10 * side * this.scale);
+            ctx.moveTo(-10 * this.scale, 8 * s * this.scale);
+            ctx.quadraticCurveTo(-25 * this.scale, 25 * s * this.scale, -40 * this.scale, 15 * s * this.scale);
             ctx.stroke();
         });
-
-        // Glowing red eyes
-        const eyePulse = (Math.sin(time * 10) + 1) / 2;
-        ctx.fillStyle = `rgba(255, 77, 77, ${0.5 + eyePulse * 0.5})`;
-        ctx.shadowBlur = 10 * this.scale;
-        ctx.shadowColor = '#ff0000ff';
+        ctx.fillStyle = '#ff4d4d';
         ctx.beginPath();
-        ctx.arc(0, -6 * this.scale, 3 * this.scale, 0, Math.PI * 2);
-        ctx.arc(0, 6 * this.scale, 3 * this.scale, 0, Math.PI * 2);
+        ctx.arc(0, -6 * this.scale, 3 * this.scale, 0, 7);
+        ctx.arc(0, 6 * this.scale, 3 * this.scale, 0, 7);
         ctx.fill();
-
         ctx.restore();
     }
 
-    // Spine spikes detail
-    drawSpineSpike(seg) {
-        const size = 12 * this.scale;
-        const angle = seg.angle + Math.PI;
-        ctx.beginPath();
-        ctx.lineWidth = 1.5 * this.scale;
-        ctx.moveTo(seg.x, seg.y);
-        ctx.lineTo(seg.x + Math.cos(angle + 0.3) * size, seg.y + Math.sin(angle + 0.3) * size);
-        ctx.moveTo(seg.x, seg.y);
-        ctx.lineTo(seg.x + Math.cos(angle - 0.3) * size, seg.y + Math.sin(angle - 0.3) * size);
-        ctx.stroke();
-    }
-
-    // Procedural leg walking logic (Using inverse kinematics principles)
-    drawLegPair(seg, pairIndex) {
-        const legSize = 40 * this.scale;
-        // distanceWalked se cycle maintain karna taaki legs smoothly chalein
-        const cycle = distanceWalked * 0.05 + (pairIndex * Math.PI / 2);
-
-        [-1, 1].forEach(side => {
-            const sideCycle = cycle + (side === 1 ? Math.PI : 0);
-            const lift = Math.max(0, Math.sin(sideCycle)) * (12 * this.scale);
-            const swing = Math.cos(sideCycle) * (18 * this.scale);
-
-            const angle = seg.angle + (Math.PI / 2) * side;
-
-            ctx.beginPath(); // Joint socket
-            ctx.arc(seg.x, seg.y, 4 * this.scale, 0, Math.PI * 2);
-            ctx.stroke();
-
-            const jointX = seg.x + Math.cos(angle) * (legSize * 0.7) + Math.cos(seg.angle) * swing;
-            const jointY = seg.y + Math.sin(angle) * (legSize * 0.7) + Math.sin(seg.angle) * swing - lift;
-
-            const footX = jointX + Math.cos(angle + 0.4 * side) * (legSize * 0.5);
-            const footY = jointY + Math.sin(angle + 0.4 * side) * (legSize * 0.5);
-
-            ctx.beginPath(); // Thigh and Shin bones
-            ctx.lineWidth = 2.5 * this.scale;
+    drawLegs(ctx, seg, idx) {
+        const cycle = state.distanceWalked * 0.05 + (idx * Math.PI / 2);
+        [-1, 1].forEach(s => {
+            const sideCycle = cycle + (s === 1 ? Math.PI : 0);
+            const lift = Math.max(0, Math.sin(sideCycle)) * 12 * this.scale;
+            const swing = Math.cos(sideCycle) * 18 * this.scale;
+            const angle = seg.angle + (Math.PI / 2) * s;
+            const jx = seg.x + Math.cos(angle) * 28 * this.scale + Math.cos(seg.angle) * swing;
+            const jy = seg.y + Math.sin(angle) * 28 * this.scale + Math.sin(seg.angle) * swing - lift;
+            ctx.beginPath();
             ctx.moveTo(seg.x, seg.y);
-            ctx.lineTo(jointX, jointY);
-            ctx.lineTo(footX, footY);
+            ctx.lineTo(jx, jy);
+            ctx.lineTo(jx + Math.cos(angle + 0.4 * s) * 20 * this.scale, jy + Math.sin(angle + 0.4 * s) * 20 * this.scale);
             ctx.stroke();
-
-            this.drawClaw(footX, footY, angle);
         });
     }
 
-    // Foot claws drawing
-    drawClaw(x, y, angle) {
-        ctx.beginPath();
-        ctx.lineWidth = 1 * this.scale;
-        for (let i = -1; i <= 1; i++) {
-            const clawAngle = angle + (i * 0.5);
-            ctx.moveTo(x, y);
-            ctx.lineTo(x + Math.cos(clawAngle) * (10 * this.scale), y + Math.sin(clawAngle) * (10 * this.scale));
-        }
-        ctx.stroke();
-    }
-
-    // Tail blade drawing
-    drawTail(seg) {
+    drawTail(ctx, seg) {
         ctx.save();
         ctx.translate(seg.x, seg.y);
         ctx.rotate(seg.angle);
         ctx.beginPath();
-        ctx.lineWidth = 2 * this.scale;
         ctx.moveTo(0, 0);
         ctx.bezierCurveTo(-10 * this.scale, -20 * this.scale, -30 * this.scale, -10 * this.scale, -40 * this.scale, 0);
         ctx.bezierCurveTo(-30 * this.scale, 10 * this.scale, -10 * this.scale, 20 * this.scale, 0, 0);
@@ -506,177 +375,106 @@ class SkeletonDragon {
         ctx.restore();
     }
 
-    // Action Triggers
-    triggerFire() {
-        this.isBreathingFire = true;
-        this.fireTimer = 100;
-    }
-
-    triggerTailAttack() {
-        this.isAttacking = true;
-        this.attackTimer = 40;
-    }
-
-    // Joystick UI for mobile
-    drawJoystick() {
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // Transform reset for UI static positioning
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#4facfe';
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.2)'; // Base circle
+    drawJoystick(ctx) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
         ctx.beginPath();
-        ctx.arc(joystick.startX, joystick.startY, joystick.radius, 0, Math.PI * 2);
+        ctx.arc(state.joystick.startX, state.joystick.startY, state.joystick.radius, 0, 7);
         ctx.stroke();
-
-        ctx.fillStyle = 'rgba(79, 172, 254, 0.5)'; // Draggable handle
+        ctx.fillStyle = 'rgba(79, 172, 254, 0.5)';
         ctx.beginPath();
-        ctx.arc(joystick.currX, joystick.currY, 20, 0, Math.PI * 2);
+        ctx.arc(state.joystick.currX, state.joystick.currY, 20, 0, 7);
         ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.stroke();
-
-        ctx.restore();
     }
 }
 
 /**
- * INITIALIZATION ENGINE
+ * ENGINE CORE
  */
-function init() {
-    isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    resize();
-    dragon = new SkeletonDragon();
-    food = new Food();
+const Engine = {
+    init() {
+        this.resize();
+        state.dragon = new SkeletonDragon();
+        state.food = new Food();
+        for (let i = 0; i < 100; i++) state.bgParticles.push({
+            x: Math.random() * state.width, y: Math.random() * state.height,
+            sz: Math.random() * 1.5, op: Math.random() * 0.5 + 0.1, sp: Math.random() * 0.5 + 0.2
+        });
 
-    // Background particles fill
-    for (let i = 0; i < 150; i++) bgParticles.push(new BackgroundParticle());
+        this.bindEvents();
+        this.loop();
+    },
 
-    // Event listeners: Resize
-    window.addEventListener('resize', () => {
-        resize();
-        dragon = new SkeletonDragon();
-        food.spawn();
-    });
+    resize() {
+        state.width = state.canvas.width = window.innerWidth;
+        state.height = state.canvas.height = window.innerHeight;
+    },
 
-    // Desktop: Mouse tracking
-    window.addEventListener('mousemove', (e) => {
-        if (!isMobile) {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
-        }
-    });
+    bindEvents() {
+        window.addEventListener('resize', () => { this.resize(); state.dragon = new SkeletonDragon(); });
+        window.addEventListener('mousemove', e => { if (!state.isMobile) { state.mouse.x = e.clientX; state.mouse.y = e.clientY; } });
+        state.themeBtn.addEventListener('click', () => {
+            state.currentThemeIndex = (state.currentThemeIndex + 1) % state.themes.length;
+            document.body.style.background = state.themes[state.currentThemeIndex];
+        });
+        window.addEventListener('dblclick', () => state.dragon.triggerFire());
 
-    // Theme Switch Button
-    themeBtn.addEventListener('click', () => {
-        currentThemeIndex = (currentThemeIndex + 1) % themes.length;
-        document.body.style.background = themes[currentThemeIndex];
-    });
-
-    // Common Actions: Double Click
-    window.addEventListener('dblclick', (e) => {
-        dragon.triggerFire();
-    });
-
-    // Desktop: Right Click
-    window.addEventListener('contextmenu', (e) => {
-        if (!isMobile) {
+        let lastTap = 0;
+        window.addEventListener('touchstart', e => {
+            const t = e.touches[0];
+            const now = Date.now();
+            if (now - lastTap < 300) state.dragon.triggerFire();
+            lastTap = now;
+            state.joystick.active = true;
+            state.joystick.startX = state.joystick.currX = t.clientX;
+            state.joystick.startY = state.joystick.currY = t.clientY;
+        });
+        window.addEventListener('touchmove', e => {
             e.preventDefault();
-            dragon.triggerTailAttack();
+            const t = e.touches[0];
+            const dx = t.clientX - state.joystick.startX, dy = t.clientY - state.joystick.startY;
+            const d = Math.hypot(dx, dy);
+            if (d > state.joystick.radius) {
+                state.joystick.currX = state.joystick.startX + (dx / d) * state.joystick.radius;
+                state.joystick.currY = state.joystick.startY + (dy / d) * state.joystick.radius;
+            } else {
+                state.joystick.currX = t.clientX; state.joystick.currY = t.clientY;
+            }
+        }, { passive: false });
+        window.addEventListener('touchend', () => state.joystick.active = false);
+    },
+
+    loop() {
+        state.ctx.fillStyle = state.themes[state.currentThemeIndex] + '66';
+        state.ctx.fillRect(0, 0, state.width, state.height);
+        state.time += 0.01;
+
+        // Background
+        state.ctx.fillStyle = 'white';
+        state.bgParticles.forEach(p => {
+            p.x -= state.dragon.vx * 0.1 * p.sp; p.y -= state.dragon.vy * 0.1 * p.sp;
+            if (p.x < 0) p.x = state.width; if (p.x > state.width) p.x = 0;
+            if (p.y < 0) p.y = state.height; if (p.y > state.height) p.y = 0;
+            state.ctx.globalAlpha = p.op;
+            state.ctx.beginPath(); state.ctx.arc(p.x, p.y, p.sz, 0, 7); state.ctx.fill();
+        });
+        state.ctx.globalAlpha = 1;
+
+        state.food.update(); state.food.draw(state.ctx);
+        state.dragon.update(); state.dragon.draw(state.ctx);
+
+        for (let i = state.particles.length - 1; i >= 0; i--) {
+            const p = state.particles[i];
+            p.update(); p.draw(state.ctx);
+            if (p.life <= 0) {
+                state.particles.splice(i, 1);
+                ParticlePool.recycle(p);
+            }
         }
-    });
+        state.ctx.globalAlpha = 1;
 
-    // Mobile: Touch Controls and Double Tap detection
-    let lastTap = 0;
-    window.addEventListener('touchstart', (e) => {
-        const t = e.touches[0];
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
-
-        // Double Tap detector
-        if (tapLength < 300 && tapLength > 0) {
-            dragon.triggerFire();
-        }
-        lastTap = currentTime;
-
-        // Joystick initialization
-        joystick.active = true;
-        joystick.startX = joystick.currX = t.clientX;
-        joystick.startY = joystick.currY = t.clientY;
-
-        // Corner Tap fallback triggers
-        if (t.clientX > width - 80 && t.clientY < 80) dragon.triggerFire();
-        if (t.clientX < 80 && t.clientY < 80) dragon.triggerTailAttack();
-    });
-
-    // Mobile: Touch movement tracking
-    window.addEventListener('touchmove', (e) => {
-        e.preventDefault(); // Scroll prevent
-        const t = e.touches[0];
-        const dx = t.clientX - joystick.startX;
-        const dy = t.clientY - joystick.startY;
-        const dist = Math.hypot(dx, dy);
-
-        // Handle distance clamp (Joystick boundaries)
-        if (dist > joystick.radius) {
-            joystick.currX = joystick.startX + (dx / dist) * joystick.radius;
-            joystick.currY = joystick.startY + (dy / dist) * joystick.radius;
-        } else {
-            joystick.currX = t.clientX;
-            joystick.currY = t.clientY;
-        }
-    }, { passive: false });
-
-    // Mobile: Touch end reset
-    window.addEventListener('touchend', () => {
-        joystick.active = false;
-    });
-
-    animate(); // Start loop
-}
-
-// Window sizing setup
-function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
-    mouse.x = width / 2;
-    mouse.y = height / 2;
-}
-
-/**
- * ANIMATION LOOP ENGINE - 60 FPS target
- */
-function animate() {
-    // Clear canvas with trace effect (Oppacity control)
-    ctx.fillStyle = themes[currentThemeIndex] + '66';
-    ctx.fillRect(0, 0, width, height);
-
-    time += 0.01;
-
-    // Background movement
-    bgParticles.forEach(p => {
-        p.update(dragon.vx, dragon.vy);
-        p.draw();
-    });
-
-    // Food rendering
-    food.draw();
-    food.update();
-
-    // Dragon rendering
-    dragon.update();
-    dragon.draw();
-
-    // Foreground particles (Bursts)
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.update();
-        p.draw();
-        if (p.life <= 0) particles.splice(i, 1);
+        requestAnimationFrame(() => this.loop());
     }
+};
 
-    requestAnimationFrame(animate);
-}
-
-// Ignition!
-init();
+Engine.init();
