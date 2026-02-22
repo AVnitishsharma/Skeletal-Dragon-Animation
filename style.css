@@ -13,6 +13,36 @@ body {
     justify-content: center;
     align-items: center;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    user-select: none;
+    touch-action: none;
+}
+
+#themeBtn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    border-radius: 30px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    z-index: 100;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+#themeBtn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+#themeBtn:active {
+    transform: translateY(0);
 }
 
 #snakeCanvas {
