@@ -21,7 +21,7 @@ const state = {
     particles: [],
     bgParticles: [],
     joystick: { active: false, startX: 0, startY: 0, currX: 0, currY: 0, radius: 50 },
-    themes: ['#161616', '#0a0b16', '#160a16', '#0a1616', '#1c1c1e'],
+    themes: ['#161616', '#0a0b16', '#160a16', '#0a1616', '#e5e0d8'],
     currentThemeIndex: 0
 };
 
@@ -153,12 +153,12 @@ class Food {
  */
 class SkeletonDragon {
     constructor() {
-        this.scale = state.isMobile ? 0.6 : 1.0;
+        this.scale = state.isMobile ? 0.3 : 0.5;
         this.length = state.isMobile ? 40 : 64;
         this.segments = [];
         this.segmentDist = 18 * this.scale;
-        this.ribWidth = 30 * this.scale;
-        this.legCount = state.isMobile ? 8 : 12;
+        this.ribWidth = 40 * this.scale;
+        this.legCount = 0; // Removed legs to match the swimming look
 
         this.isBreathingFire = false;
         this.fireTimer = 0;
@@ -170,7 +170,7 @@ class SkeletonDragon {
         this.maxSpeed = state.isMobile ? 5 : 7;
         this.friction = 0.92;
         this.acceleration = 0.08;
-        this.bufferDist = 50 * this.scale;
+        this.bufferDist = 150 * this.scale;
 
         for (let i = 0; i < this.length; i++) {
             this.segments.push({
@@ -206,8 +206,8 @@ class SkeletonDragon {
         const distSq = dx * dx + dy * dy;
         const dist = Math.sqrt(distSq);
 
-        if (!state.isMobile && distSq < (2500 * this.scale * this.scale) && dist > 0) { // 50^2
-            const pushForce = (50 * this.scale - dist) * 0.05;
+        if (!state.isMobile && distSq < (22500 * this.scale * this.scale) && dist > 0) { // 150^2
+            const pushForce = (150 * this.scale - dist) * 0.05;
             this.vx -= (dx / (dist || 1)) * pushForce;
             this.vy -= (dy / (dist || 1)) * pushForce;
         } else if (dist > (state.isMobile ? (state.joystick.active ? 10 : 0) : this.bufferDist)) {
@@ -252,6 +252,16 @@ class SkeletonDragon {
 
             curr.x = prev.x + (sdx / (sdist || 1)) * targetDist;
             curr.y = prev.y + (sdy / (sdist || 1)) * targetDist;
+
+            // Tail Wagging Animation - Sinusoidal swaying at the end (Only when moving)
+            if (i > this.length * 0.7) {
+                const velocity = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const speedFactor = Math.min(1, velocity / 1); // Normalized factor based on movement
+                const tailFactor = (i - this.length * 0.7) / (this.length * 0.3);
+                const wag = Math.sin(state.time * 2 + i * 0.1) * 4 * this.scale * tailFactor * speedFactor;
+                curr.x += Math.cos(curr.angle + Math.PI / 2) * wag;
+                curr.y += Math.sin(curr.angle + Math.PI / 2) * wag;
+            }
         }
 
         if (this.isBreathingFire) {
@@ -263,8 +273,8 @@ class SkeletonDragon {
                 const fireColors = ['#ff4d4d', '#ffa500', '#ffff00', '#ff8c00'];
                 const color = fireColors[Math.floor(Math.random() * fireColors.length)];
                 state.particles.push(ParticlePool.get(
-                    head.x + Math.cos(angle) * 20,
-                    head.y + Math.sin(angle) * 20,
+                    head.x + Math.cos(angle) * 135 * this.scale,
+                    head.y + Math.sin(angle) * 135 * this.scale,
                     angle,
                     5 + Math.random() * 5,
                     20 + Math.random() * 10,
@@ -293,7 +303,7 @@ class SkeletonDragon {
             this.renderSkeleton(ctx, false);
             ctx.restore();
         }
-        ctx.strokeStyle = 'white';
+        ctx.strokeStyle = 'white'; // White stroke for dark theme
         this.renderSkeleton(ctx, true);
         if (state.isMobile && state.joystick.active) this.drawJoystick(ctx);
     }
@@ -302,37 +312,56 @@ class SkeletonDragon {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         if (glow) {
-            ctx.shadowBlur = (10 + (Math.sin(state.time * 3) + 1) * 5) * this.scale;
-            ctx.shadowColor = '#4facfe';
+            ctx.shadowBlur = (15 + (Math.sin(state.time * 3) + 1) * 5) * this.scale;
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
         }
 
-        // 1. Spine
+        // 1. Spine (Thicker central line)
         ctx.beginPath();
-        ctx.lineWidth = 3 * this.scale;
+        ctx.lineWidth = 6 * this.scale;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.moveTo(this.segments[0].x, this.segments[0].y);
         for (let i = 1; i < this.length; i++) ctx.lineTo(this.segments[i].x, this.segments[i].y);
         ctx.stroke();
 
-        // 2. Ribs & Details
-        ctx.lineWidth = 1.2 * this.scale;
-        for (let i = 2; i < this.length - 10; i++) {
+        // 2. Multi-Finned Body & Vertebrae
+        for (let i = 1; i < this.length - 1; i++) {
             const seg = this.segments[i];
-            const size = Math.sin((i / (this.length - 10)) * Math.PI) * this.ribWidth;
-            const cos = Math.cos(seg.angle + Math.PI / 2);
-            const sin = Math.sin(seg.angle + Math.PI / 2);
-            ctx.beginPath();
-            ctx.moveTo(seg.x + cos * size, seg.y + sin * size);
-            ctx.quadraticCurveTo(seg.x + Math.cos(seg.angle) * 5, seg.y + Math.sin(seg.angle) * 5, seg.x - cos * size, seg.y - sin * size);
-            ctx.stroke();
-            if (i === 2) this.drawSkull(ctx, seg);
+            const progress = i / this.length;
+
+            // Central Ribs (Vertebrae segments) - Increased Density (Every 2nd)
+            if (i % 2 === 0) { // Spacing: Increased density
+                const middleFactor = Math.sin(progress * Math.PI);
+                // Middle bones remain large, but tail tapers much more
+                const ribSize = (middleFactor * 65 * Math.pow(1 - progress, 0.5)) * this.scale;
+
+                const tilt = 0; // Sidha look
+                const cos = Math.cos(seg.angle + Math.PI / 2 + tilt);
+                const sin = Math.sin(seg.angle + Math.PI / 2 + tilt);
+
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.4 - progress * 0.2})`;
+                ctx.lineWidth = 2.5 * this.scale;
+                ctx.beginPath();
+                ctx.moveTo(seg.x + cos * ribSize, seg.y + sin * ribSize);
+                // "Moro" - Increased curve depth by adjusting the control point distance
+                ctx.quadraticCurveTo(
+                    seg.x - Math.cos(seg.angle) * 30 * this.scale,
+                    seg.y - Math.sin(seg.angle) * 30 * this.scale,
+                    seg.x - cos * ribSize,
+                    seg.y - sin * ribSize
+                );
+                ctx.stroke();
+            }
+
+            // Large Trailing Fins (Sets at specific points)
+            if (i === 10 || i === 25) {
+                this.drawFins(ctx, seg, i);
+            }
+
+            if (i === 1) this.drawSkull(ctx, seg);
         }
 
-        // 3. Legs
-        const spacing = Math.floor((this.length - 15) / (this.legCount / 2));
-        for (let i = 1; i <= this.legCount / 2; i++) {
-            const seg = this.segments[i * spacing + 5];
-            if (seg) this.drawLegs(ctx, seg, i);
-        }
+        // 3. Removed Legs (Fin-like movement is in the spines now)
 
         this.drawTail(ctx, this.segments[this.length - 1]);
         ctx.shadowBlur = 0;
@@ -341,24 +370,78 @@ class SkeletonDragon {
     drawSkull(ctx, seg) {
         ctx.save();
         ctx.translate(seg.x, seg.y);
-        ctx.rotate(Math.atan2(seg.y - this.segments[1].y, seg.x - this.segments[1].x));
+        ctx.rotate(seg.angle + Math.PI); // Corrected rotation to face forward
+
+        const headScale = 1.5 * this.scale;
+        const offset = 50; // Increased offset to push head further forward
+        const yOffset = 0;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5 * this.scale;
+
+        // 1. GEOMETRIC ARROW-HEAD (Diamond Shape)
         ctx.beginPath();
-        ctx.moveTo(25 * this.scale, 0);
-        ctx.bezierCurveTo(10 * this.scale, -15 * this.scale, -15 * this.scale, -15 * this.scale, -20 * this.scale, -5 * this.scale);
-        ctx.lineTo(-20 * this.scale, 5 * this.scale);
-        ctx.bezierCurveTo(-15 * this.scale, 15 * this.scale, 10 * this.scale, 15 * this.scale, 25 * this.scale, 0);
+        ctx.moveTo((40 + offset) * headScale, yOffset * headScale); // Front tip
+        ctx.lineTo((5 + offset) * headScale, (-18 + yOffset) * headScale); // Top wide point
+        ctx.lineTo((-20 + offset) * headScale, (-12 + yOffset) * headScale); // Back top
+        ctx.lineTo((-20 + offset) * headScale, (12 + yOffset) * headScale); // Back bottom
+        ctx.lineTo((5 + offset) * headScale, (18 + yOffset) * headScale); // Bottom wide point
+        ctx.closePath();
         ctx.stroke();
+
+        // 2. GEOMETRIC EYES (Sharp slits) - On Sides of Face
+        ctx.fillStyle = '#ff0000';
+        ctx.shadowBlur = 15 * this.scale;
+        ctx.shadowColor = 'red';
         [-1, 1].forEach(s => {
             ctx.beginPath();
-            ctx.moveTo(-10 * this.scale, 8 * s * this.scale);
-            ctx.quadraticCurveTo(-25 * this.scale, 25 * s * this.scale, -40 * this.scale, 15 * s * this.scale);
+            ctx.moveTo((5 + offset) * headScale, (-12 + yOffset) * s * headScale);
+            ctx.lineTo((20 + offset) * headScale, (-8 + yOffset) * s * headScale);
+            ctx.lineTo((10 + offset) * headScale, (-4 + yOffset) * s * headScale);
+            ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+
+        // 3. SHARP BACKWARD HORNS
+        ctx.lineWidth = 2.5 * this.scale;
+        [-1, 1].forEach(s => {
+            ctx.beginPath();
+            ctx.moveTo((-15 + offset) * headScale, (-10 + yOffset) * s * headScale);
+            ctx.lineTo((-45 + offset) * headScale, (-25 + yOffset) * s * headScale);
             ctx.stroke();
         });
-        ctx.fillStyle = '#ff4d4d';
-        ctx.beginPath();
-        ctx.arc(0, -6 * this.scale, 3 * this.scale, 0, 7);
-        ctx.arc(0, 6 * this.scale, 3 * this.scale, 0, 7);
-        ctx.fill();
+
+        ctx.restore();
+    }
+
+    drawFins(ctx, seg, idx) {
+        const span = 300 * this.scale * (idx === 10 ? 1 : 0.7); // Increased from 150
+        const wave = Math.sin(state.time * 3 + idx) * 0.3;
+
+        ctx.save();
+        ctx.translate(seg.x, seg.y);
+        ctx.rotate(seg.angle);
+
+        [-1, 1].forEach(s => {
+            ctx.lineWidth = 1 * this.scale;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+
+            // Multiple thin ribbons for each fin set
+            for (let j = 0; j < 6; j++) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+
+                const angle = (Math.PI / 2 + (j * 0.15)) * s;
+                const tx = -Math.cos(angle) * (span - j * 15) * 1.5;
+                const ty = Math.sin(angle) * (span - j * 15) * (1 + wave);
+
+                ctx.bezierCurveTo(
+                    -50 * this.scale, ty * 0.5,
+                    -100 * this.scale, ty * 0.8,
+                    tx, ty
+                );
+                ctx.stroke();
+            }
+        });
         ctx.restore();
     }
 
@@ -379,14 +462,34 @@ class SkeletonDragon {
         });
     }
 
+    drawStreamer(ctx, seg, idx) {
+        const wave = Math.sin(state.time * 3 + idx * 0.3) * 20 * this.scale;
+        ctx.save();
+        ctx.lineWidth = 0.5 * this.scale;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(seg.x, seg.y);
+        ctx.quadraticCurveTo(
+            seg.x - Math.cos(seg.angle) * 40 * this.scale,
+            seg.y - Math.sin(seg.angle) * 40 * this.scale + wave,
+            seg.x - Math.cos(seg.angle) * 80 * this.scale,
+            seg.y - Math.sin(seg.angle) * 80 * this.scale + wave * 1.5
+        );
+        ctx.stroke();
+        ctx.restore();
+    }
+
     drawTail(ctx, seg) {
         ctx.save();
         ctx.translate(seg.x, seg.y);
         ctx.rotate(seg.angle);
+        ctx.fillStyle = '#2a2a2a';
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.bezierCurveTo(-10 * this.scale, -20 * this.scale, -30 * this.scale, -10 * this.scale, -40 * this.scale, 0);
-        ctx.bezierCurveTo(-30 * this.scale, 10 * this.scale, -10 * this.scale, 20 * this.scale, 0, 0);
+        ctx.moveTo(0, 0); // Tip attached to spine
+        ctx.lineTo(-70 * this.scale, -30 * this.scale); // Top base corner
+        ctx.lineTo(-70 * this.scale, 30 * this.scale);  // Bottom base corner
+        ctx.closePath();
+        ctx.fill();
         ctx.stroke();
         ctx.restore();
     }
@@ -465,10 +568,10 @@ const Engine = {
         state.ctx.fillRect(0, 0, state.width, state.height);
         state.time += 0.01;
 
-        // Background
-        state.ctx.fillStyle = 'white';
+        // Background Particles - Subtle dots
+        state.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         state.bgParticles.forEach(p => {
-            p.x -= state.dragon.vx * 0.1 * p.sp; p.y -= state.dragon.vy * 0.1 * p.sp;
+            p.x -= state.dragon.vx * 0.05 * p.sp; p.y -= state.dragon.vy * 0.05 * p.sp;
             if (p.x < 0) p.x = state.width; if (p.x > state.width) p.x = 0;
             if (p.y < 0) p.y = state.height; if (p.y > state.height) p.y = 0;
             state.ctx.globalAlpha = p.op;
