@@ -153,8 +153,8 @@ class Food {
  */
 class SkeletonDragon {
     constructor() {
-        this.scale = state.isMobile ? 0.3 : 0.5;
-        this.length = state.isMobile ? 40 : 64;
+        this.scale = state.isMobile ? 0.45 : 0.5;
+        this.length = state.isMobile ? 54 : 64;
         this.segments = [];
         this.segmentDist = 18 * this.scale;
         this.ribWidth = 40 * this.scale;
