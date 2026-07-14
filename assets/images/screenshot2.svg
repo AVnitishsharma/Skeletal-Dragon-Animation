@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+  <rect width="100%" height="100%" fill="#0a0b16"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="4">
+    <path d="M920 320 C820 280, 720 260, 600 300 C480 340, 380 360, 240 300"/>
+  </g>
+  <circle cx="620" cy="300" r="10" fill="#4facfe" stroke="#00f2fe" stroke-width="3"/>
+  <text x="40" y="40" fill="#ffffff" font-family="Inter, sans-serif" font-size="18">Screenshot: Alternative theme view</text>
+</svg>
