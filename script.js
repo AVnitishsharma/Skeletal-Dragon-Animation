@@ -268,16 +268,16 @@ class SkeletonDragon {
             this.fireTimer--;
             if (this.fireTimer <= 0) this.isBreathingFire = false;
             const angle = Math.atan2(head.y - this.segments[1].y, head.x - this.segments[1].x);
-            for (let i = 0; i < (state.isMobile ? 2 : 4); i++) {
+            for (let i = 0; i < (state.isMobile ? 3 : 6); i++) {
                 // Fire colors: red, orange, yellow
                 const fireColors = ['#ff4d4d', '#ffa500', '#ffff00', '#ff8c00'];
                 const color = fireColors[Math.floor(Math.random() * fireColors.length)];
                 state.particles.push(ParticlePool.get(
-                    head.x + Math.cos(angle) * 135 * this.scale,
-                    head.y + Math.sin(angle) * 135 * this.scale,
+                    head.x + Math.cos(angle) * 180 * this.scale,
+                    head.y + Math.sin(angle) * 180 * this.scale,
                     angle,
-                    5 + Math.random() * 5,
-                    20 + Math.random() * 10,
+                    7 + Math.random() * 5,
+                    30 + Math.random() * 20,
                     this.scale,
                     color
                 ));

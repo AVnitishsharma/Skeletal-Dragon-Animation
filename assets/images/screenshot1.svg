@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
-  <rect width="100%" height="100%" fill="#161616"/>
-  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M900 300 C800 260, 700 260, 600 300 C500 340, 400 360, 300 320 C220 290, 180 270, 120 250" opacity="0.95"/>
-  </g>
-  <circle cx="200" cy="220" r="12" fill="#4facfe" stroke="#00f2fe" stroke-width="4"/>
-  <text x="40" y="40" fill="#ffffff" font-family="Inter, sans-serif" font-size="18">Screenshot: Dragon + Food (Light outlines)</text>
-</svg>

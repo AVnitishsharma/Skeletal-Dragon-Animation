@@ -3,14 +3,14 @@
 Yeh chhota project ek procedural "Skeletal Dragon" animation/game hai — mouse/touch se guide karke food khana hai. Yeh README Hindi mein hai aur simple deploy/run instructions, live link example, aur screenshots include karta hai.
 
 ## Live demo
-- Local (open in browser): [index.html](index.html)
+- Local (open in browser): [https://skeletal-dragon-animation.onrender.com]
 - GitHub Pages example format: `https://<your-username>.github.io/<repo-name>/`
 
 ## Screenshots
 
-![Dragon view 1](assets/images/screenshot1.svg)
+![Dragon view 1](assets/images/screenshot1.png)
 
-![Dragon view 2](assets/images/screenshot2.svg)
+![Dragon view 2](assets/images/screenshot2.png)
 
 ## Controls / Usage
 - Move cursor / touch screen: Dragon head ko guide karega.
